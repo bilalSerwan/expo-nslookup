@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["ExpoNslookupModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.nslookup.ExpoNslookupModule"]
+  }
+}
