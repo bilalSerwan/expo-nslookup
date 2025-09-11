@@ -2,7 +2,7 @@ package expo.modules.nslookup
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import java.net.URL
+import java.net.InetAddress
 
 class ExpoNslookupModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -13,11 +13,10 @@ class ExpoNslookupModule : Module() {
     }
 
     AsyncFunction("lookup") { hostname: String ->
-      return runCatching {
-        withContext(Dispatchers.IO) {
-            InetAddress.getAllByName(hostname).isNotEmpty()
-        }
-    }.getOrDefault(false)
+      runCatching {
+        val addresses = InetAddress.getAllByName(hostname)
+        addresses != null && addresses.isNotEmpty()
+      }.getOrDefault(false)
     }
   }
 }
