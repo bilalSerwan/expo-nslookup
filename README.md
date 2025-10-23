@@ -51,31 +51,12 @@ No additional configuration required. The module will be automatically linked.
 ### Basic Example
 
 ```typescript
-import * as ExpoNslookup from "expo-nslookup";
-
-// Simple domain lookup
-const checkDomain = async () => {
-  try {
-    const isResolvable = await ExpoNslookup.lookup("example.com");
-    console.log("Domain resolves:", isResolvable); // true or false
-  } catch (error) {
-    console.error("Lookup failed:", error);
-  }
-};
-```
-
-### Advanced Usage with Options
-
-```typescript
 import ExpoNslookupModule from "expo-nslookup";
 
-// Lookup with custom timeout
-const advancedLookup = async () => {
+// DNS lookup with default timeout (1 second)
+const checkDomain = async () => {
   try {
-    const result = await ExpoNslookupModule.lookup("example.com", {
-      timeout: 5.0, // 5 seconds timeout
-    });
-
+    const result = await ExpoNslookupModule.lookup("example.com");
     console.log("Success:", result.success);
     console.log("Domain:", result.domain);
     console.log("Has Addresses:", result.hasAddresses);
@@ -85,23 +66,53 @@ const advancedLookup = async () => {
 };
 ```
 
+### With Custom Timeout
+
+```typescript
+import ExpoNslookupModule from "expo-nslookup";
+
+// Lookup with custom timeout
+const lookupWithTimeout = async () => {
+  try {
+    const result = await ExpoNslookupModule.lookup("example.com", {
+      timeout: 5.0, // 5 seconds timeout
+    });
+
+    if (result.success && result.hasAddresses) {
+      console.log(`✅ ${result.domain} resolves successfully`);
+    } else {
+      console.log(`❌ ${result.domain} does not resolve`);
+    }
+  } catch (error) {
+    console.error("Lookup failed:", error);
+  }
+};
+```
+
 ### Complete Example
 
 ```typescript
-import * as ExpoNslookup from 'expo-nslookup';
-import { Button, Text, TextInput, View } from 'react-native';
-import { useState } from 'react';
+import ExpoNslookupModule from "expo-nslookup";
+import { Button, Text, TextInput, View } from "react-native";
+import { useState } from "react";
 
 export default function App() {
-  const [domain, setDomain] = useState('google.com');
+  const [domain, setDomain] = useState("google.com");
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const performLookup = async () => {
     try {
       setLoading(true);
-      const isResolvable = await ExpoNslookup.lookup(domain.trim());
-      setResult(isResolvable ? '✅ Domain resolves' : '❌ Domain not found');
+      const lookupResult = await ExpoNslookupModule.lookup(domain.trim(), {
+        timeout: 3.0,
+      });
+
+      if (lookupResult.success && lookupResult.hasAddresses) {
+        setResult("✅ Domain resolves successfully");
+      } else {
+        setResult("❌ Domain not found");
+      }
     } catch (error: any) {
       setResult(`⚠️ Error: ${error.message}`);
     } finally {
@@ -119,7 +130,7 @@ export default function App() {
         autoCorrect={false}
       />
       <Button
-        title={loading ? 'Looking up...' : 'Check Domain'}
+        title={loading ? "Looking up..." : "Check Domain"}
         onPress={performLookup}
         disabled={loading}
       />
@@ -131,33 +142,13 @@ export default function App() {
 
 ## API Reference
 
-### `lookup(domain: string): Promise<boolean>`
+### `ExpoNslookupModule.lookup(domain: string, options?: DNSLookupOptions): Promise<DNSLookupResult>`
 
-Performs a DNS lookup for the specified domain.
+Performs a DNS lookup for the specified domain with optional configuration.
 
 **Parameters:**
 
 - `domain` (string): The domain name to lookup (e.g., "example.com")
-
-**Returns:**
-
-- `Promise<boolean>`: Returns `true` if the domain resolves, `false` otherwise
-
-**Example:**
-
-```typescript
-const exists = await ExpoNslookup.lookup("github.com");
-```
-
----
-
-### `ExpoNslookupModule.lookup(domain: string, options?: DNSLookupOptions): Promise<DNSLookupResult>`
-
-Advanced lookup method with configurable options and detailed results.
-
-**Parameters:**
-
-- `domain` (string): The domain name to lookup
 - `options` (optional): Configuration options
   - `timeout` (number): Timeout in seconds (default: 1.0)
 
@@ -171,8 +162,12 @@ Advanced lookup method with configurable options and detailed results.
 **Example:**
 
 ```typescript
+// Without options (uses default 1 second timeout)
+const result = await ExpoNslookupModule.lookup("github.com");
+
+// With custom timeout
 const result = await ExpoNslookupModule.lookup("example.com", {
-  timeout: 3.0,
+  timeout: 5.0,
 });
 ```
 
