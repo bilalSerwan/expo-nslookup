@@ -63,8 +63,9 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - ExpoNslookup (0.1.0):
+  - ExpoNslookup (0.0.3):
     - ExpoModulesCore
+    - SwiftDNS (~> 0.3.0)
   - fast_float (6.1.4)
   - FBLazyVector (0.79.6)
   - fmt (11.0.2)
@@ -1719,6 +1720,7 @@ PODS:
     - React-perflogger (= 0.79.6)
     - React-utils (= 0.79.6)
   - SocketRocket (0.7.1)
+  - SwiftDNS (0.3.0)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -1806,6 +1808,7 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - SocketRocket
+    - SwiftDNS
 
 EXTERNAL SOURCES:
   boost:
@@ -1976,7 +1979,7 @@ SPEC CHECKSUMS:
   ExpoFont: cf508bc2e6b70871e05386d71cab927c8524cc8e
   ExpoKeepAwake: bf0811570c8da182bfb879169437d4de298376e7
   ExpoModulesCore: 00a1b5c73248465bd0b93f59f8538c4573dac579
-  ExpoNslookup: d2a3e3b1c312ccbc13f30f130615c40b6db5630b
+  ExpoNslookup: 92d1e1cab3bcb58f84a7eaae08a5887d586169fe
   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
   FBLazyVector: 07309209b7b914451b8f822544a18e2a0a85afff
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
@@ -2045,6 +2048,7 @@ SPEC CHECKSUMS:
   ReactCodegen: 06cf663b23a161f42a2e14087269753f422885c0
   ReactCommon: 44c86ec3ace664c0f33b7a2ac89aced8304ef25e
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  SwiftDNS: 26419c4c30243ecf6fb5f85b51c41c91ef94beaf
   Yoga: dc7c21200195acacb62fa920c588e7c2106de45e
 
 PODFILE CHECKSUM: 8673d5700c6d2b328b6652838edff51925b8fd36

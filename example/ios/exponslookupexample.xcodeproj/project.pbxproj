@@ -12,6 +12,7 @@
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C9E945B6DCD451B6A9790681 /* libPods-exponslookupexample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 417A6F541E7B141A0F62558D /* libPods-exponslookupexample.a */; };
+		CC913ABC2EB344EC004FC9D4 /* AsyncDNSResolver in Frameworks */ = {isa = PBXBuildFile; productRef = CC913ABB2EB344EC004FC9D4 /* AsyncDNSResolver */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		FA87BDE36E110739CD5C689B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4D611ACC8165F3CB8B4DA705 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -38,6 +39,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C9E945B6DCD451B6A9790681 /* libPods-exponslookupexample.a in Frameworks */,
+				CC913ABC2EB344EC004FC9D4 /* AsyncDNSResolver in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,6 +180,9 @@
 				Base,
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
+			packageReferences = (
+				CC913ABA2EB344EC004FC9D4 /* XCRemoteSwiftPackageReference "swift-async-dns-resolver" */,
+			);
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -446,7 +451,10 @@
 				LIBRARY_SEARCH_PATHS = "$(SDKROOT)/usr/lib/swift\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				OTHER_LDFLAGS = "$(inherited)  ";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					" ",
+				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
@@ -501,7 +509,10 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(SDKROOT)/usr/lib/swift\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_LDFLAGS = "$(inherited)  ";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					" ",
+				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				USE_HERMES = true;
@@ -531,6 +542,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CC913ABA2EB344EC004FC9D4 /* XCRemoteSwiftPackageReference "swift-async-dns-resolver" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-async-dns-resolver";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CC913ABB2EB344EC004FC9D4 /* AsyncDNSResolver */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CC913ABA2EB344EC004FC9D4 /* XCRemoteSwiftPackageReference "swift-async-dns-resolver" */;
+			productName = AsyncDNSResolver;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;
 }
