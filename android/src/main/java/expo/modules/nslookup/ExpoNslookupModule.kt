@@ -1,26 +1,21 @@
 package expo.modules.nslookup
 
+import android.os.Build
+import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.kotlin.records.Field
-import expo.modules.kotlin.records.Record
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.net.InetAddress
 import java.net.UnknownHostException
+import org.xbill.DNS.*
+import java.time.Duration
 
-/**
- * Options for DNS lookup
- */
-class DNSLookupOptions : Record {
-    @Field
-    val timeout: Double? = null // Timeout in seconds
-}
 
 /**
  * Expo module for performing DNS lookups with configurable timeout support
@@ -31,7 +26,7 @@ class ExpoNslookupModule : Module() {
         Name("ExpoNslookup")
 
         // MARK: - DNS Lookup Function with Optional Configuration
-        AsyncFunction("lookup") { domain: String, options: DNSLookupOptions?, promise: Promise ->
+        AsyncFunction("advanceLookUp") { domain: String, timeout: Int, promise: Promise ->
             // Validate input domain
             if (domain.isEmpty()) {
                 promise.reject(
@@ -42,16 +37,96 @@ class ExpoNslookupModule : Module() {
                 return@AsyncFunction
             }
 
-            // Get timeout from options or use default (1 second)
-            val timeoutMs = ((options?.timeout ?: DEFAULT_TIMEOUT_SECONDS) * 1000).toLong()
-
             // Perform DNS lookup with timeout
-            performDNSLookupWithTimeout(domain, timeoutMs, promise)
+            performDNSLookupWithTimeout(
+                domain = domain,
+                timeoutMs = timeout.toLong(),
+                promise = promise
+            )
+        }
+
+        AsyncFunction("nsLookUpWithCustomDnsServer") { domain: String, dnsServers: List<String>, timeoutInSeconds: Int, promise: Promise ->
+            resolveDomainWithMultipleServers(
+                domain = domain,
+                dnsServers = dnsServers,
+                timeout = timeoutInSeconds,
+                promise = promise,
+            )
         }
     }
 
-    // MARK: - Private Helper Methods
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun resolveDomainWithMultipleServers(
+        domain: String,
+        dnsServers: List<String>,
+        timeout: Int,
+        promise: Promise
+    ) = GlobalScope.launch(Dispatchers.IO) {
+        val errors: MutableList<String?> = mutableListOf()
+        var isPublic: Boolean = false
 
+        Log.d("ExpoNslookupModule", "Starting DNS resolution for domain: $domain")
+        for (server in dnsServers) {
+            try {
+                Log.d("ExpoNslookupModule", "resolving using DNS server: $server")
+                val resolver = SimpleResolver(server)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    resolver.timeout = Duration.ofSeconds(timeout.toLong())
+                } else {
+                    resolver.setTimeout(timeout)
+                }
+
+                Log.d("ExpoNslookupModule", "Using resolver with timeout: $timeout seconds")
+
+
+                val lookup = Lookup(domain, Type.A)
+                lookup.setCache(null)
+                Log.d("ExpoNslookupModule", "Disabled cache for lookup")
+                lookup.setResolver(resolver)
+                Log.d("ExpoNslookupModule", "resolver set for lookup")
+                val records = lookup.run()
+                Log.d("ExpoNslookupModule", "Lookup result: ${lookup.result}, Records: $records")
+
+                if (lookup.result == Lookup.SUCCESSFUL && records != null) {
+                    val ips = records.mapNotNull { record ->
+                        (record as? ARecord)?.address?.hostAddress
+                    }
+
+                    if (ips.isNotEmpty()) {
+                        promise.resolve(
+                            mapOf(
+                                "isPrivate" to true,
+                                "domain" to domain,
+                                "ip" to ips,
+                                "server" to server
+                            )
+                        )
+                        return@launch
+                    } else {
+                        isPublic = true
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(
+                    "ExpoNslookupModule",
+                    "Error occurred while resolving with server $server: ${e.message}"
+                )
+                errors.add("$server -- ${e.message}")
+            }
+        }
+
+        promise.reject(
+            code = if (isPublic) DNSErrorCode.NO_ADDRESSES_FOUND.code else DNSErrorCode.UNKNOWN.code,
+            message = errors.mapIndexed { index, string ->
+                "e-${index + 1}" to string
+            }.toString(),
+            null
+        )
+        return@launch
+    }
+
+    // MARK: - Private Helper Methods
     /**
      * Performs DNS lookup for a given domain with timeout
      * @param domain The domain name to resolve
@@ -70,34 +145,30 @@ class ExpoNslookupModule : Module() {
                     performDNSLookup(domain)
                 }
 
-                withContext(Dispatchers.Main) {
-                    promise.resolve(
-                        mapOf(
-                            "success" to true,
-                            "domain" to domain,
-                            "hasAddresses" to hasAddresses
-                        )
+                promise.resolve(
+                    mapOf(
+                        "success" to true,
+                        "domain" to domain,
+                        "hasAddresses" to hasAddresses
                     )
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                withContext(Dispatchers.Main) {
-                    promise.reject(
+                )
+
+            } catch (e: Exception) {
+                when (e) {
+
+                    is TimeoutCancellationException -> promise.reject(
                         DNSErrorCode.TIMEOUT.code,
-                        DNSErrorCode.TIMEOUT.getMessage(domain, timeoutMs / 1000.0),
+                        DNSErrorCode.TIMEOUT.getMessage(domain, timeoutMs / 1000L),
                         e
                     )
-                }
-            } catch (e: UnknownHostException) {
-                withContext(Dispatchers.Main) {
-                    promise.reject(
+
+                    is UnknownHostException -> promise.reject(
                         DNSErrorCode.NO_ADDRESSES_FOUND.code,
                         DNSErrorCode.NO_ADDRESSES_FOUND.getMessage(domain),
                         e
                     )
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    promise.reject(
+
+                    else -> promise.reject(
                         DNSErrorCode.UNKNOWN.code,
                         e.message ?: DNSErrorCode.UNKNOWN.getMessage(domain),
                         e
@@ -108,24 +179,9 @@ class ExpoNslookupModule : Module() {
     }
 
     @Throws(UnknownHostException::class)
-    private suspend fun performDNSLookup(domain: String): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val addresses = InetAddress.getAllByName(domain)
-                val hasAddresses = addresses.isNotEmpty()
-                hasAddresses
-            } catch (e: UnknownHostException) {
-                throw e
-            } catch (e: Exception) {
-                throw UnknownHostException("Failed to resolve domain: ${e.message}")
-            }
-        }
-    }
+    private fun performDNSLookup(domain: String): Boolean =
+        InetAddress.getAllByName(domain)?.isNotEmpty() == true
 
-
-    companion object {
-        private const val DEFAULT_TIMEOUT_SECONDS = 1.0
-    }
 }
 
 /**
@@ -133,15 +189,15 @@ class ExpoNslookupModule : Module() {
  */
 private enum class DNSErrorCode(val code: String) {
     INVALID_DOMAIN("INVALID_DOMAIN"),
-    NO_ADDRESSES_FOUND("NO_ADDRESSES_FOUND"),
+    NO_ADDRESSES_FOUND("50"),
     TIMEOUT("TIMEOUT"),
-    UNKNOWN("UNKNOWN_ERROR");
+    UNKNOWN("100");
 
-    fun getMessage(domain: String = "", timeoutSeconds: Double? = null): String {
+    fun getMessage(domain: String = "", timeoutSeconds: Long = 0L): String {
         return when (this) {
             INVALID_DOMAIN -> "The provided domain name is empty or invalid"
             NO_ADDRESSES_FOUND -> "No addresses found for domain: '$domain'"
-            TIMEOUT -> "DNS lookup timed out after ${timeoutSeconds ?: 1.0} second(s) for domain: '$domain'"
+            TIMEOUT -> "DNS lookup timed out after ${timeoutSeconds / 1000} second(s) for domain: '$domain'"
             UNKNOWN -> "An unknown error occurred during DNS lookup for domain: '$domain'"
         }
     }

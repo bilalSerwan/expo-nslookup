@@ -1,12 +1,13 @@
 import ExpoModulesCore
 import CoreFoundation
+import SwiftDNS
 
 public class ExpoNslookupModule: Module {
     public func definition() -> ModuleDefinition {
         Name("ExpoNslookup")
         
         // MARK: - DNS Lookup Function
-        AsyncFunction("lookup") { (domain: String, options: [String: Any]? , promise: Promise) in
+        AsyncFunction("advanceLookUp") { (domain: String, timeout:Double , promise: Promise) in
             // Validate input domain
             guard !domain.isEmpty else {
                 promise.reject(
@@ -15,8 +16,6 @@ public class ExpoNslookupModule: Module {
                 )
                 return
             }
-            
-            let timeout = options?["timeout"] as? TimeInterval ?? 1.0
             
             // Perform DNS lookup on background queue to avoid blocking
             DispatchQueue.global(qos: .userInitiated).async {
@@ -47,6 +46,10 @@ public class ExpoNslookupModule: Module {
                 }
             }
         }
+        
+        AsyncFunction("nsLookUpWithCustomDnsServer") { (domain: String, dnsServers: [String], timeoutInSeconds: Int) -> [String: Any] in
+                  return try await resolveDomainWithMultipleServers(domain: domain, dnsServers: dnsServers, timeout: timeoutInSeconds)
+              }
     }
     
     // MARK: - Private Helper Methods
@@ -123,6 +126,99 @@ public class ExpoNslookupModule: Module {
         }
     }
 }
+
+private func resolveDomainWithMultipleServers(domain: String, dnsServers: [String], timeout: Int) async throws -> [String: Any] {
+       var errors: [String] = []
+    var isPublic: Bool = false
+       // Try each DNS server in order
+       for server in dnsServers {
+           do {
+               // Query the DNS server with timeout
+               let ips = try await performDNSQuery(
+                   domain: domain,
+                   dnsServer: server,
+                   timeout: timeout
+               )
+               
+               // Check if we got IPs
+               if !ips.isEmpty {
+                   // Success - return immediately (matching Android's early return)
+                   return [
+                       "isPrivate": true,
+                       "domain": domain,
+                       "ip": ips,
+                       "server": server
+                   ]
+               }
+           } catch {
+               // Collect error and continue to next server
+               errors.append(error.localizedDescription)
+           }
+       }
+       
+       // All servers failed - throw error (matching Android's promise.reject)
+    var code = if isPublic { 50 } else { 100 }
+       throw NSError(
+            domain: "\(errors)",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: errors.joined(separator: ", ")]
+       )
+   }
+   
+// MARK: - Helper Function: Perform DNS Query with Timeout
+  
+  private func performDNSQuery(domain: String, dnsServer: String, timeout: Int) async throws -> [String] {
+      return try await withCheckedThrowingContinuation { continuation in
+          var hasReturned = false
+          
+          // Create timeout task
+          let timeoutTask = DispatchWorkItem {
+              if !hasReturned {
+                  hasReturned = true
+                  continuation.resume(throwing: NSError(
+                      domain:"Time out Issue",
+                      code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "DNS query timeout after \(timeout) seconds"]
+                  ))
+              }
+          }
+          
+          // Schedule timeout
+          DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeout), execute: timeoutTask)
+          
+          // Perform DNS query (SwiftDNS default query - no type parameter)
+          DNSService.query(host: NWEndpoint.Host(dnsServer), domain: domain, queue: .global()) { (response, error) in
+              // Cancel timeout
+              timeoutTask.cancel()
+              
+              if hasReturned {
+                  return
+              }
+              hasReturned = true
+              
+              if let error = error {
+                  continuation.resume(throwing: error)
+                  return
+              }
+              
+              guard let response = response else {
+                  continuation.resume(throwing: NSError(
+                      domain: "No Response",
+                      code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "No response from DNS server"]
+                  ))
+                  return
+              }
+              
+              // Extract IP addresses from A records
+              let ipAddresses = response.Answers.compactMap { answer -> String? in
+                      return answer.RData
+              }
+              
+              continuation.resume(returning: ipAddresses)
+          }
+      }
+  }
 
 
 // MARK: - Error Types

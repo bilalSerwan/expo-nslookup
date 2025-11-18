@@ -1,4 +1,4 @@
-import { NativeModule, requireNativeModule } from 'expo';
+import { NativeModule, requireNativeModule } from "expo";
 
 export interface DNSLookupResult {
   success: boolean;
@@ -6,15 +6,21 @@ export interface DNSLookupResult {
   hasAddresses: boolean;
 }
 
-export interface DNSLookupOptions {
-  /**
-   * Timeout in seconds (default: 1.0)
-   */
-  timeout?: number;
+export interface CustomDnsLookupResult {
+  isPrivate: boolean;
+  domain: string;
+  ip: string[];
+  server: string;
 }
 
 declare class ExpoNslookupModule extends NativeModule {
-  lookup(domain: string,  options?: DNSLookupOptions): Promise<DNSLookupResult>;
+  advanceLookUp(domain: string, timeout: number): Promise<DNSLookupResult>;
+
+  nsLookUpWithCustomDnsServer(
+    domain: string,
+    dnsServers: string[],
+    timeoutInSeconds: number
+  ): Promise<CustomDnsLookupResult>;
 }
 
-export default requireNativeModule<ExpoNslookupModule>('ExpoNslookup');
+export default requireNativeModule<ExpoNslookupModule>("ExpoNslookup");
