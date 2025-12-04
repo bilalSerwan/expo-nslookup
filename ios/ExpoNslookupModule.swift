@@ -1,6 +1,5 @@
 import ExpoModulesCore
 import CoreFoundation
-import SwiftDNS
 
 public class ExpoNslookupModule: Module {
     private let resolver = UltraFastDNSResolver()
