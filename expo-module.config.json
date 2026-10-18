@@ -1,9 +1,16 @@
 {
-  "platforms": ["apple", "android", "web"],
+  "platforms": [
+    "apple",
+    "android"
+  ],
   "apple": {
-    "modules": ["ExpoNslookupModule"]
+    "modules": [
+      "ExpoNslookupModule"
+    ]
   },
   "android": {
-    "modules": ["expo.modules.nslookup.ExpoNslookupModule"]
+    "modules": [
+      "expo.modules.nslookup.ExpoNslookupModule"
+    ]
   }
 }

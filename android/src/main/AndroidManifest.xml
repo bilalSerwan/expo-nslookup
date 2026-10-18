@@ -1,2 +1,6 @@
-<manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- UDP queries to the DNS servers passed to nsLookupWithCustomDns -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Active network, its DNS servers, and the offline check -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>
