@@ -37,7 +37,7 @@ Example app (`cd example`):
 - The example resolves `expo-nslookup` to `..` through `metro.config.js` (`extraNodeModules`, `watchFolders`) and `package.json` (`expo.autolinking.nativeModulesDir: ".."`). It also blocks `../node_modules/react{,-native}` so only one copy of React is bundled.
 - **`example/ios` and `example/android` are generated.** Never edit them by hand: `npx expo prebuild --clean` (the normal workflow here) rewrites them. Native project changes go in `example/app.json` or in a config plugin under `example/plugins/`, registered in `app.json` `plugins`. After changing either, run `npx expo prebuild --clean`.
 - `example/plugins/withFmtCxx17.js` compiles the `fmt` pod as C++17. Without it, React Native 0.79's fmt 11.0.2 does not compile with Xcode 26 ("call to consteval function … is not a constant expression").
-- `example/ourNetwork.ts` holds the company domain and DNS IPs that the example's "Our network" card and presets use.
+- The example app has two sections: "Compare device DNS" (`compareDnsServers`, with a "Use device DNS" button that fills in `getDnsServers()`) and "Lookup with custom DNS" (`nsLookupWithCustomDns`, with presets for the matrix below). It holds no company domain or DNS IPs; type them in.
 
 ## Verification
 
@@ -70,8 +70,7 @@ Then run the example app on a device or simulator for each platform (`cd example
 | via `['192.0.2.1', '1.1.1.1']` | `'resolved'`, fast |
 | airplane mode | `'offline'`, in under 100 ms |
 | `''`, `a..b`, servers `['example.com']` or `[]`, `timeoutMs: 0` | the same error `code` on both platforms |
-| `compareDnsServers(await getDnsServers())` | `isMatch: true` |
-| the example app's Self-test section | every check passes |
+| `compareDnsServers(await getDnsServers())` ("Use device DNS", then "Compare") | `isMatch: true` |
 
 The real business check comes last: the company's internal domain and DNS IPs give `'resolved'` on the company network, and `'notFound'` or `'timeout'` on a public network.
 

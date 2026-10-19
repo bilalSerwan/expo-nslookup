@@ -62,3 +62,6 @@ yarn-error.log
 
 # Local documentation site (node docs/serve.mjs), kept out of git for now
 /docs/
+
+# Tarballs from `npm pack`
+/*.tgz

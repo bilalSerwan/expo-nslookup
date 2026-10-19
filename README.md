@@ -17,39 +17,116 @@ The typical use is telling a **private network** (for example your company's net
 
 ## Installation
 
-Make sure your project has [the `expo` package installed and configured](https://docs.expo.dev/bare/installing-expo-modules/), then:
+### 1. Add the package
 
 ```bash
 npx expo install expo-nslookup
+# or: npm install expo-nslookup / yarn add expo-nslookup
 ```
 
-On iOS, run `npx pod-install` afterwards (not needed with `expo prebuild` or EAS Build).
+In a bare React Native app, first make sure [the `expo` package is installed and configured](https://docs.expo.dev/bare/installing-expo-modules/).
+
+### 2. Rebuild the native app
+
+This library contains native code (Swift and Kotlin), so it **does not work in Expo Go**, and a JavaScript reload is not enough. Rebuild your app once after installing:
+
+```bash
+npx expo prebuild --clean   # if you use Continuous Native Generation
+npx expo run:ios            # or: npx expo run:android, or an EAS Build
+```
+
+In a bare React Native app, run `npx pod-install` and rebuild from Xcode or Android Studio.
+
+### 3. Configuration
+
+None. There is no config plugin and nothing to add to `app.json`:
+
+- The Android permissions it needs (`INTERNET`, `ACCESS_NETWORK_STATE`) are merged into your app automatically.
+- iOS needs no setup, **unless** one of your DNS servers is on the same subnet as the device. In that case, add a Local Network usage description:
+
+  ```json
+  {
+    "expo": {
+      "ios": {
+        "infoPlist": {
+          "NSLocalNetworkUsageDescription": "Used to check whether you are connected to the company network."
+        }
+      }
+    }
+  }
+  ```
 
 ## Usage
+
+### Check whether the device is on your network
+
+Pass your internal domain and the IPs of **your own** DNS servers. If one of them answers with an address, the device is on your network.
 
 ```typescript
 import { nsLookupWithCustomDns } from "expo-nslookup";
 
-const OUR_DNS_SERVERS = ["10.10.0.53", "10.10.1.53"];
+const INTERNAL_DOMAIN = "intranet.example.internal"; // a name only your DNS servers know
+const OUR_DNS_SERVERS = ["10.10.0.53", "10.10.1.53"]; // IP literals, not hostnames
 
-const result = await nsLookupWithCustomDns("intranet.example.internal", OUR_DNS_SERVERS, {
-  timeoutMs: 3000,
-});
-
-if (result.isPrivate) {
-  console.log(`On our network: ${result.server} resolved it to ${result.ip.join(", ")}`);
-} else {
-  console.log(`Public network (${result.reason})`);
+export async function isOnOurNetwork(): Promise<boolean> {
+  try {
+    const result = await nsLookupWithCustomDns(INTERNAL_DOMAIN, OUR_DNS_SERVERS, {
+      timeoutMs: 3000,
+    });
+    // result.reason tells you why: "resolved" | "notFound" | "timeout" | "offline"
+    return result.isPrivate;
+  } catch (error) {
+    // Only invalid arguments reject (for example a typo in the domain or an IP).
+    console.warn("expo-nslookup rejected:", (error as { code?: string }).code);
+    return false; // treat as public
+  }
 }
 ```
 
-Compare the device's DNS servers with yours:
+A public network is a normal result, not an error: `isPrivate` is `false` and `reason` says why. See [the reasons table](#nslookupwithcustomdnsdomain-dnsservers-options) for details.
+
+### Use it in a component
+
+```tsx
+import { useEffect, useState } from "react";
+import { Text } from "react-native";
+
+export function NetworkBadge() {
+  const [isPrivate, setIsPrivate] = useState<boolean | null>(null); // null while checking
+
+  useEffect(() => {
+    let active = true;
+    isOnOurNetwork().then((value) => {
+      if (active) setIsPrivate(value);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (isPrivate === null) return <Text>Checking…</Text>;
+  return <Text>{isPrivate ? "Company network" : "Public network"}</Text>;
+}
+```
+
+The check runs once. To check again when the network changes, call `isOnOurNetwork()` from a network listener, for example `NetInfo.addEventListener` from `@react-native-community/netinfo`.
+
+### Compare the device's DNS servers with yours (optional)
 
 ```typescript
-import { compareDnsServers } from "expo-nslookup";
+import { compareDnsServers, getDnsServers } from "expo-nslookup";
 
-const { isMatch, matchedServers, deviceServers } = await compareDnsServers(["10.10.0.53", "10.10.1.53"]);
+const servers = await getDnsServers(); // e.g. ["10.10.0.53"]
+const { isMatch, matchedServers } = await compareDnsServers(["10.10.0.53", "10.10.1.53"]);
 ```
+
+This is a hint, not proof: a VPN, Android Private DNS or an iOS DNS profile can change which servers actually resolve names. Use `nsLookupWithCustomDns` for the decision.
+
+### Tips
+
+- **Pick `timeoutMs` carefully.** On a public network your servers usually don't answer at all, so the check takes the full `timeoutMs` and ends with `reason: "timeout"`. With `3000`, each server gets three tries (at 0, 0.5 and 1.5 s).
+- **You don't need your own timer** around the call: it always finishes within about `timeoutMs`.
+- **Branch on `error.code`**, never on `error.message` (see [Errors](#errors)).
 
 ## API
 
@@ -150,12 +227,71 @@ Arguments are checked in order (domain, servers, timeout), so a call with severa
 
 ## Migrating from 0.2.x
 
-0.3.0 is a breaking release.
+0.3.0 is a breaking release. Before:
 
-- **"Public" is no longer an error.** Replace `try { await lookup… ; private } catch { public }` with a check on `result.isPrivate`. Treat any rejection as "unknown" (for example, assume public).
+```typescript
+// 0.2.x: a public network rejected (code "50" on Android); the timeout was in seconds
+try {
+  await nsLookupWithCustomDns(domain, servers, 5);
+  return "private";
+} catch (error) {
+  return "public";
+}
+```
+
+After:
+
+```typescript
+// 0.3.0: a public network is a normal result; the timeout is in milliseconds
+try {
+  const result = await nsLookupWithCustomDns(domain, servers, { timeoutMs: 5000 });
+  return result.isPrivate ? "private" : "public";
+} catch (error) {
+  return "public"; // only invalid arguments reject now
+}
+```
+
+If you keep the old code, every network is reported as **private**, because the call no longer throws for a public network.
+
+- **"Public" is no longer an error.** Check `result.isPrivate` instead of catching an error. Treat any rejection as "unknown" (for example, assume public).
 - **New signature:** `nsLookupWithCustomDns(domain, dnsServers, { timeoutMs })`. The timeout is now in **milliseconds** in an options object, instead of seconds as a positional argument.
 - **Removed:** `lookup()`, `advanceLookup()` and the default export. They called a native function that no longer existed.
 - **The native function was renamed** (`nsLookUpWithCustomDnsServer` → `nsLookupWithCustomDns`). That way an old JavaScript bundle running on the new native code fails loudly instead of reading every network as private. If you ship JavaScript over the air, **bump your app's `runtimeVersion`** with this upgrade.
+
+## Troubleshooting
+
+**`Cannot find native module 'ExpoNslookup'`**
+The app is running without the native code. You are in Expo Go, or you didn't rebuild after installing. Rebuild the app (see [Installation](#2-rebuild-the-native-app)).
+
+**The check always returns `timeout`, even on your network**
+- Make sure the domain exists on your DNS servers and has an A (IPv4) record.
+- Make sure the server IPs are reachable from the device on UDP port 53.
+- On iOS, if a server is on the device's subnet, the user must allow Local Network access (see [Configuration](#3-configuration)).
+
+**iOS build fails in `fmt` with Xcode 26.4 or later** (`call to consteval function … is not a constant expression`)
+This error comes from React Native itself, not from this library. React Native 0.79 to 0.83 ship fmt 11.0.2, which newer Xcode versions can't compile, and React Native fixed it by moving to fmt 12.1.0.
+- **Expo SDK 54 and later:** you are not affected. React Native comes precompiled for iOS, so fmt is never compiled in your project. This changes only if you set `ios.buildReactNativeFromSource: true` in `expo-build-properties`.
+- **Expo SDK 53:** build with Xcode 26.3 or earlier, or compile the `fmt` pod as C++17 with a config plugin. This repository's example app has one: [`example/plugins/withFmtCxx17.js`](example/plugins/withFmtCxx17.js).
+
+## Development
+
+Try a local build in your app before it is published:
+
+```bash
+# in this repository
+npm ci
+CI=1 npm run build
+npm pack                       # creates expo-nslookup-<version>.tgz
+
+# in your app
+npm install ../expo-nslookup/expo-nslookup-0.3.0.tgz
+# or with Yarn:
+yarn add expo-nslookup@file:../expo-nslookup/expo-nslookup-0.3.0.tgz
+```
+
+Then rebuild the native app (`npx expo prebuild --clean` and `npx expo run:ios` / `run:android`). Repeat `npm pack` and the install after every change to the library.
+
+The `example/` app uses the library from this folder directly: `cd example && npm ci && npx expo run:ios`.
 
 ## Contributing
 
