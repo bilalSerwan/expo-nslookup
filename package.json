@@ -1,7 +1,7 @@
 {
   "name": "expo-nslookup",
-  "version": "0.2.0",
-  "description": "My new module",
+  "version": "0.3.0",
+  "description": "Native DNS lookups against custom DNS servers for Expo and React Native, for telling private (company) networks apart from public ones",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "scripts": {
@@ -28,7 +28,9 @@
   "author": "BilalSerwan <ensw02121@student.su.edu.krd> (https://github.com/bilalSerwan)",
   "license": "MIT",
   "homepage": "https://github.com/bilalSerwan/expo-nslookup#readme",
-  "dependencies": {},
+  "jest": {
+    "preset": "expo-module-scripts"
+  },
   "devDependencies": {
     "@types/react": "~19.0.0",
     "expo": "~53.0.0",

@@ -1,26 +1,25 @@
 import { NativeModule, requireNativeModule } from "expo";
 
-export interface DNSLookupResult {
-  success: boolean;
-  domain: string;
-  hasAddresses: boolean;
-}
+import type {
+  CustomDnsLookupResult,
+  DnsServerComparison,
+} from "./ExpoNslookup.types";
 
-export interface CustomDnsLookupResult {
-  isPrivate: boolean;
-  domain: string;
-  ip: string[];
-  server: string;
-}
+// iOS omits a nil optional field from the returned object instead of sending null.
+export type NativeLookupResult = Omit<CustomDnsLookupResult, "server"> & {
+  server?: string | null;
+};
 
 declare class ExpoNslookupModule extends NativeModule {
-  advanceLookUp(domain: string, timeout: number): Promise<DNSLookupResult>;
-
-  nsLookUpWithCustomDnsServer(
+  nsLookupWithCustomDns(
     domain: string,
     dnsServers: string[],
-    timeoutInSeconds: number
-  ): Promise<CustomDnsLookupResult>;
+    timeoutMs: number,
+  ): Promise<NativeLookupResult>;
+
+  getDnsServers(): Promise<string[]>;
+
+  compareDnsServers(expectedServers: string[]): Promise<DnsServerComparison>;
 }
 
 export default requireNativeModule<ExpoNslookupModule>("ExpoNslookup");

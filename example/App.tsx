@@ -1,140 +1,232 @@
-import { advanceLookup, lookup, nsLookupWithCustomDns } from "expo-nslookup";
+import {
+  compareDnsServers,
+  CustomDnsLookupResult,
+  DnsServerComparison,
+  getDnsServers,
+  nsLookupWithCustomDns,
+} from "expo-nslookup";
+import { useCallback, useState } from "react";
 import {
   Button,
   SafeAreaView,
   ScrollView,
   Text,
-  View,
   TextInput,
+  View,
 } from "react-native";
-import { useState } from "react";
+
+interface Failure {
+  code: string;
+  message: string;
+}
+
+const toFailure = (e: any): Failure => ({
+  code: e?.code ?? "?",
+  message: e?.message ?? String(e),
+});
+
+const splitList = (text: string) =>
+  text
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+// Test cases from the verification matrix in CLAUDE.md
+const PRESETS: {
+  title: string;
+  domain: string;
+  servers: string;
+  timeoutMs: string;
+}[] = [
+  {
+    title: "Public resolver",
+    domain: "example.com",
+    servers: "1.1.1.1",
+    timeoutMs: "5000",
+  },
+  {
+    title: "NXDOMAIN",
+    domain: "nonexistent.invalid",
+    servers: "1.1.1.1",
+    timeoutMs: "5000",
+  },
+  {
+    title: "Silent server",
+    domain: "example.com",
+    servers: "192.0.2.1",
+    timeoutMs: "2000",
+  },
+  {
+    title: "Silent + public",
+    domain: "example.com",
+    servers: "192.0.2.1, 1.1.1.1",
+    timeoutMs: "5000",
+  },
+];
 
 export default function App() {
-  const [result, setResult] = useState<string | null>(null);
-  const [defaultResult, setDefaultResult] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [domain, setDomain] = useState("s-fl-auth.newrozholdings.com");
-  const [timeout, setTimeout] = useState("5");
-  const [customDns, setCustomDns] = useState("8.8.8.8");
-  const [customResult, setCustomResult] = useState<string | null>(null);
+  const [expected, setExpected] = useState("");
+  const [comparison, setComparison] = useState<{
+    result?: DnsServerComparison;
+    failure?: Failure;
+  } | null>(null);
 
-  const onLookup = async () => {
+  const [domain, setDomain] = useState(PRESETS[0].domain);
+  const [servers, setServers] = useState(PRESETS[0].servers);
+  const [timeoutMs, setTimeoutMs] = useState(PRESETS[0].timeoutMs);
+  const [lookup, setLookup] = useState<{
+    result?: CustomDnsLookupResult;
+    failure?: Failure;
+    jsMs: number;
+  } | null>(null);
+  const [lookingUp, setLookingUp] = useState(false);
+
+  const fillDeviceServers = useCallback(async () => {
     try {
-      setLoading(true);
-      const timeoutValue = parseFloat(timeout) || 5;
-
-      // Run both lookups in parallel
-      const [lookupResult, simpleExists] = await Promise.all([
-        advanceLookup(domain.trim(), timeoutValue),
-        lookup(domain.trim()),
-      ]);
-
-      // Format the advanced result in a user-friendly way
-      const formattedResult = `Domain: ${lookupResult.domain}
-Success: ${lookupResult.success ? "Yes" : "No"}
-Has Addresses: ${lookupResult.hasAddresses ? "Yes" : "No"}
-Status: ${
-        lookupResult.success && lookupResult.hasAddresses
-          ? "✅ DNS lookup successful"
-          : "❌ DNS lookup failed"
-      }`;
-
-      setResult(formattedResult);
-      setDefaultResult(
-        simpleExists
-          ? "✅ Default lookup: resolves"
-          : "❌ Default lookup: not found"
-      );
-    } catch (e: any) {
-      console.error(e);
-      const message =
-        e?.message ?? (typeof e === "string" ? e : JSON.stringify(e));
-      setResult(`❌ Error: ${message}`);
-      setDefaultResult(null);
-    } finally {
-      setLoading(false);
+      setExpected((await getDnsServers()).join(", "));
+    } catch (e) {
+      setComparison({ failure: toFailure(e) });
     }
-  };
+  }, []);
 
-  const onCustomLookup = async () => {
+  const runCompare = useCallback(async () => {
     try {
-      setLoading(true);
-      const timeoutValue = parseFloat(timeout) || 5;
+      setComparison({ result: await compareDnsServers(splitList(expected)) });
+    } catch (e) {
+      setComparison({ failure: toFailure(e) });
+    }
+  }, [expected]);
+
+  const runLookup = useCallback(async () => {
+    setLookingUp(true);
+    const start = performance.now();
+    try {
       const result = await nsLookupWithCustomDns(
         domain.trim(),
-        [customDns.trim()],
-        timeoutValue
+        splitList(servers),
+        { timeoutMs: Number(timeoutMs) },
       );
-
-      const formatted = `Domain: ${result.domain}\nServer: ${
-        result.server
-      }\nIs Private: ${result.isPrivate ? "Yes" : "No"}\nIPs: ${result.ip.join(
-        ", "
-      )}`;
-      setCustomResult(formatted);
-    } catch (e: any) {
-      console.log(e);
-      const message =
-        e?.message ?? (typeof e === "string" ? e : JSON.stringify(e));
-      setCustomResult(`❌ Error: ${message}`);
+      setLookup({ result, jsMs: performance.now() - start });
+    } catch (e) {
+      setLookup({ failure: toFailure(e), jsMs: performance.now() - start });
     } finally {
-      setLoading(false);
+      setLookingUp(false);
     }
-  };
+  }, [domain, servers, timeoutMs]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.container}>
-        <Text style={styles.header}>Module API Example</Text>
+      <ScrollView keyboardShouldPersistTaps="handled">
+        <Text style={styles.header}>expo-nslookup</Text>
+
         <View style={styles.group}>
-          <Text style={styles.groupHeader}>Advanced DNS Lookup</Text>
+          <Text style={styles.title}>Compare device DNS</Text>
+          <Text style={styles.label}>
+            Expected DNS servers (comma separated)
+          </Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter domain"
-            value={domain}
+            value={expected}
+            onChangeText={setExpected}
+            placeholder="e.g. 1.1.1.1, 8.8.8.8"
             autoCapitalize="none"
             autoCorrect={false}
-            onChangeText={setDomain}
-            editable={!loading}
           />
+          <View style={styles.presets}>
+            <Button title="Use device DNS" onPress={fillDeviceServers} />
+            <Button title="Compare" onPress={runCompare} />
+          </View>
+          {comparison?.result && (
+            <>
+              <Text
+                style={[
+                  styles.verdict,
+                  { color: comparison.result.isMatch ? "#1b5e20" : "#b00020" },
+                ]}
+              >
+                {comparison.result.isMatch ? "MATCH" : "NO MATCH"}
+              </Text>
+              <Text style={styles.mono}>
+                {JSON.stringify(comparison.result, null, 2)}
+              </Text>
+            </>
+          )}
+          {comparison?.failure && (
+            <Text style={styles.error}>
+              {comparison.failure.code}: {comparison.failure.message}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.group}>
+          <Text style={styles.title}>Lookup with custom DNS</Text>
+          <View style={styles.presets}>
+            {PRESETS.map((p) => (
+              <Button
+                key={p.title}
+                title={p.title}
+                onPress={() => {
+                  setDomain(p.domain);
+                  setServers(p.servers);
+                  setTimeoutMs(p.timeoutMs);
+                }}
+              />
+            ))}
+          </View>
+          <Text style={styles.label}>Domain</Text>
           <TextInput
             style={styles.input}
-            placeholder="Timeout (seconds)"
-            value={timeout}
-            keyboardType="numeric"
-            onChangeText={setTimeout}
-            editable={!loading}
+            value={domain}
+            onChangeText={setDomain}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.label}>DNS servers (comma separated)</Text>
+          <TextInput
+            style={styles.input}
+            value={servers}
+            onChangeText={setServers}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.label}>Timeout (ms)</Text>
+          <TextInput
+            style={styles.input}
+            value={timeoutMs}
+            onChangeText={setTimeoutMs}
+            keyboardType="number-pad"
           />
           <Button
-            title={loading ? "Looking up…" : "Advanced Lookup"}
-            onPress={onLookup}
-            disabled={loading}
+            title={lookingUp ? "Looking up…" : "Look up"}
+            onPress={runLookup}
+            disabled={lookingUp}
           />
-          <Text style={styles.resultLabel}>Advanced Result:</Text>
-          <Text style={styles.resultText}>{result ?? "-"}</Text>
-
-          <Text style={styles.resultLabel}>Default Mobile Lookup:</Text>
-          <Text style={styles.resultText}>{defaultResult ?? "-"}</Text>
-
-          <View style={{ marginTop: 20 }}>
-            <Text style={styles.groupHeader}>Custom DNS Lookup</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Custom DNS server (comma separated)"
-              value={customDns}
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setCustomDns}
-              editable={!loading}
-            />
-            <Button
-              title={loading ? "Looking up…" : "Lookup with Custom DNS"}
-              onPress={onCustomLookup}
-              disabled={loading}
-            />
-            <Text style={styles.resultLabel}>Custom DNS Result:</Text>
-            <Text style={styles.resultText}>{customResult ?? "-"}</Text>
-          </View>
+          {lookup?.result && (
+            <>
+              <Text
+                style={[
+                  styles.verdict,
+                  { color: lookup.result.isPrivate ? "#1b5e20" : "#b00020" },
+                ]}
+              >
+                {lookup.result.isPrivate ? "PRIVATE" : "PUBLIC"} ·{" "}
+                {lookup.result.reason}
+              </Text>
+              <Text style={styles.mono}>
+                {JSON.stringify(lookup.result, null, 2)}
+              </Text>
+            </>
+          )}
+          {lookup?.failure && (
+            <Text style={styles.error}>
+              {lookup.failure.code}: {lookup.failure.message}
+            </Text>
+          )}
+          {lookup && (
+            <Text style={styles.small}>
+              JS round trip {lookup.jsMs.toFixed(0)} ms
+            </Text>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -142,50 +234,33 @@ Status: ${
 }
 
 const styles = {
-  header: {
-    fontSize: 30,
-    margin: 20,
-  },
-  groupHeader: {
-    fontSize: 20,
-    marginBottom: 20,
-  },
+  container: { flex: 1, backgroundColor: "#eee" },
+  header: { fontSize: 26, margin: 20 },
   group: {
-    margin: 20,
+    marginHorizontal: 20,
+    marginBottom: 16,
     backgroundColor: "#fff",
     borderRadius: 10,
-    padding: 20,
+    padding: 16,
+  },
+  title: { fontSize: 18, fontWeight: "bold" as const, marginBottom: 8 },
+  presets: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 4 },
+  label: {
+    fontSize: 14,
+    fontWeight: "bold" as const,
+    marginTop: 14,
+    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
-    padding: 10,
     borderRadius: 6,
-    marginBottom: 10,
-    backgroundColor: "#fff",
-  },
-  resultLabel: {
-    fontSize: 16,
-    fontWeight: "bold" as const,
-    marginTop: 15,
-    marginBottom: 5,
-  },
-  resultText: {
-    fontSize: 14,
+    padding: 8,
+    marginBottom: 8,
     fontFamily: "monospace",
-    backgroundColor: "#f5f5f5",
-    padding: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    lineHeight: 20,
   },
-  container: {
-    flex: 1,
-    backgroundColor: "#eee",
-  },
-  view: {
-    flex: 1,
-    height: 200,
-  },
+  verdict: { fontSize: 20, fontWeight: "bold" as const, marginTop: 12 },
+  mono: { fontSize: 13, fontFamily: "monospace", marginTop: 6 },
+  error: { fontSize: 15, color: "#b00020", marginTop: 12 },
+  small: { fontSize: 12, marginVertical: 6 },
 };

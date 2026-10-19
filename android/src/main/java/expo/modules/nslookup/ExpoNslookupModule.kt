@@ -1,81 +1,42 @@
 package expo.modules.nslookup
 
-import expo.modules.kotlin.Promise
+import android.content.Context
+import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 
-
-/**
- * Expo module for performing DNS lookups with configurable timeout support
- */
 class ExpoNslookupModule : Module() {
+  private val resolver = DnsResolver()
 
-    override fun definition() = ModuleDefinition {
-        Name("ExpoNslookup")
+  private val context: Context
+    get() = appContext.reactContext?.applicationContext ?: throw Exceptions.ReactContextLost()
 
-        AsyncFunction("nsLookUpWithCustomDnsServer") { domain: String, dnsServers: List<String>, timeoutInSeconds: Int, promise: Promise ->
-            if (domain.isEmpty())
-                promise.reject(
-                    DNSErrorCode.INVALID_DOMAIN.code,
-                    "Domain is empty",
-                    null
-                )
+  override fun definition() = ModuleDefinition {
+    Name("ExpoNslookup")
 
-            if (dnsServers.isEmpty())
-                promise.reject(
-                    DNSErrorCode.INVALID_DOMAIN.code,
-                    "DNS servers list is empty",
-                    null
-                )
-
-
-            resolveDomain(
-                domain,
-                dnsServers,
-                timeoutInSeconds,
-                promise
-            )
-        }
+    // Never rejects for a public network; only invalid arguments reject.
+    AsyncFunction("nsLookupWithCustomDns") Coroutine { domain: String, dnsServers: List<String>, timeoutMs: Double ->
+      val request = rejectingInvalidArguments { LookupRequest.of(domain, dnsServers, timeoutMs) }
+      val startNs = System.nanoTime()
+      val outcome = if (DnsServers.isOffline(context)) LookupOutcome.Offline else resolver.resolve(request)
+      outcome.toResult(request.domain, elapsedMs = ((System.nanoTime() - startNs) / 1_000_000).toInt())
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
-    private fun resolveDomain(
-        domain: String,
-        dnsServers: List<String>,
-        timeout: Int,
-        promise: Promise
-    ) = GlobalScope.launch(Dispatchers.IO) {
-        val errors = mutableListOf<String>()
-        try {
-            val result = DNSClient.resolve(
-                domain,
-                dnsServers = dnsServers,
-                maxRetries = 3,
-                retryTimeoutMs = 500,
-                totalTimeoutMs = timeout * 1000
-            )
-            promise.resolve(result)
-            return@launch
-        } catch (e: Exception) {
-            errors.add(e.message ?: "Unknown")
-        }
-
-        promise.reject(
-            code = DNSErrorCode.NO_ADDRESSES_FOUND.code,
-            message = "No Address Found, Failed to resolve $domain. Errors: ${errors.joinToString(" --|-- ")}",
-            null
-        )
+    AsyncFunction("getDnsServers") {
+      DnsServers.read(context)
     }
-}
 
-/**
- * Custom error codes for DNS operations
- */
-private enum class DNSErrorCode(val code: String) {
-    INVALID_DOMAIN("INVALID_DOMAIN"),
-    NO_ADDRESSES_FOUND("50")
+    AsyncFunction("compareDnsServers") { expectedServers: List<String> ->
+      val expected = rejectingInvalidArguments { LookupRequest.parseServers(expectedServers) }.map { it.text }
+      val device = DnsServers.read(context)
+      val matched = device.filter { it in expected }
+      DnsServerComparison().apply {
+        deviceServers = device
+        this.expectedServers = expected
+        matchedServers = matched
+        isMatch = matched.isNotEmpty()
+      }
+    }
+  }
 }

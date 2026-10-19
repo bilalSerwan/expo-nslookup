@@ -12,3 +12,22 @@ __tests__
 /android/src/test/
 /android/build/
 /example/
+
+/Package.swift
+/ios/CoreTests/
+/.build/
+/.swiftpm/
+
+# Local IDE/Gradle state and machine-specific paths (.npmignore replaces .gitignore, so list them here too)
+/android/.gradle/
+/android/.idea/
+/android/local.properties
+
+# Repository tooling and internal docs, not part of the package
+/CLAUDE.md
+/.eslintrc.js
+/eslint.config.js
+/.yarnrc.yml
+
+# Local documentation site
+/docs/
